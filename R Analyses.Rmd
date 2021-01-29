@@ -1,0 +1,1163 @@
+---
+title: "R Stats"
+author: "Shaun Stearns"
+date: "1/22/2020"
+output: html_document
+---
+
+# ANOVA
+```{r}
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+valid <- data[ind==2,]
+
+# Read most file sources
+library(readr)
+
+# Run Anova
+anova1 <- aov(OT.Hours ~ Work.Location.Borough, data = BigBoroughs)
+#Turn off Scientific Notation
+options(scipen=999)
+# Main Effect Results
+summary(anova1)
+# Effect Size
+EtaSq(anova1)
+
+# Acquire Detalied Descriptives Per Category/Group
+library(psych)
+describeBy(BigBoroughs$OT.Hours, BigBoroughs$Work.Location.Borough, mat = TRUE)
+```
+
+
+## T-Test
+```{r}
+# Repeated Measures (2 Time Points)
+t.test(BigBoroughs$`Total OT Paid`, BigBoroughs$`Total Other Pay`, paired=TRUE)
+```
+
+
+## Multiple Comparison No Correction
+```{r}
+Post<-TukeyHSD(anova1)
+Post
+```
+
+
+## Multiple Comparison with Correction
+```{r}
+library(multcomp)
+# Correction with Bonferroni
+anova2 <- lm(OT.Hours ~ Work.Location.Borough, data = BigBoroughs)
+glht(anova2$model, linfct)
+# Not actually Tukey, produces uncorrected matrix
+bonferroni1 <- summary(glht(anova2, linfct = mcp(Work.Location.Borough = "Tukey")))
+# Performs fdr on matrix
+bonferroni2 <- summary(fdr1, test=adjusted("bonferroni"))
+bonferroni2
+
+# Correction with False Discovery Rate
+library(multcomp)
+# Change aov to lm
+anova2 <- lm(OT.Hours ~ Work.Location.Borough, data = BigBoroughs)
+glht(anova2$model, linfct)
+# Not actually Tukey, produces uncorrected matrix
+fdr1 <- summary(glht(anova2, linfct = mcp(Work.Location.Borough = "Tukey")))
+# Performs fdr on matrix
+fdr2 <- summary(fdr1, test=adjusted("fdr"))
+fdr2
+
+# PostHoc alternitive with less info
+pairwise.t.test(BigBoroughs$OT.Hours, BigBoroughs$Work.Location.Borough, p.adj="fdr")
+
+# Scheffe Test
+PostSchf <- ScheffeTest(anova1, conf.level=NA)
+PostSchf
+```
+
+
+# Linear Regression
+```{r}
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+valid <- data[ind==2,]
+
+BRONXlm<-lm(BRONX$`OT Hours` ~ BRONX$`Base Salary`)
+summ(BRONXlm, part.corr = TRUE, confint = TRUE, coeftable = TRUE, digits = 4)
+# Standardized Beta
+library(QuantPsyc)
+lm.beta(BRONXlm)
+```
+
+
+# Exhaustive Search Multiple Regression
+```{r}
+car.df <- read.csv("ToyotaCorolla.csv")
+car.df <- car.df[1:1000, ]
+car.df <- car.df[c(3, 4, 7, 8, 9, 10, 12, 13, 14, 17, 18)]
+#Dummy Code Categorical Variables
+library(dummies)
+car.df1 <- dummy.data.frame(car.df, names = c("Fuel_Type") , sep = ".", all = FALSE)
+car.df <- cbind2(car.df[,-4], car.df1)
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(car.df), replace = T, prob = c(0.8, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+# Exhaustive Search 
+
+# Categorical predictors must be turned into dummies manually.
+library(leaps)
+
+
+# Run Search
+search <- regsubsets(Price ~ ., data = train.df, nbest = 1, nvmax = dim(train.df)[2],
+                     method = "exhaustive")
+sum <- summary(search)
+
+# show models
+sum$which
+
+# show metrics
+sum$rsq
+sum$adjr2
+sum$Cp
+sum$obj
+```
+
+
+# Forward Selection Multiple Regression
+```{r}
+car.df <- read.csv("ToyotaCorolla.csv")
+car.df = subset(car.df, select = -c(Id,Model) )
+# use first 1000 rows of data
+car.df <- car.df[1:1000, ]
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(car.df), replace = T, prob = c(0.8, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+library(dummies)
+train.df <- dummy.data.frame(train.df, sep = ".", drop = TRUE)
+valid.df <- dummy.data.frame(valid.df, sep = ".", drop = TRUE)
+
+#Run Forward Selection
+library(forecast)
+car.lm <- lm(Price ~ ., data = train.df)
+car.lm.null <- lm(Price~1, data = train.df)
+# use step() to run forward regression.
+car.lm.step <- step(car.lm.null, scope=list(lower=car.lm.null, upper=car.lm), direction = "forward")
+summary(car.lm.step)  # Which variables were added?
+car.lm.step.pred <- predict(car.lm.step, valid.df)
+accuracy(car.lm.step.pred, valid.df$Price)
+```
+
+
+# Backward Selection Multiple Regression
+```{r}
+car.df <- read.csv("ToyotaCorolla.csv")
+car.df = subset(car.df, select = -c(Id,Model) )
+# use first 1000 rows of data
+car.df <- car.df[1:1000, ]
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(car.df), replace = T, prob = c(0.8, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+library(dummies)
+train.df <- dummy.data.frame(train.df, sep = ".", drop = TRUE)
+valid.df <- dummy.data.frame(valid.df, sep = ".", drop = TRUE)
+
+#Run Forward Selection
+library(forecast)
+car.lm <- lm(Price ~ ., data = train.df)
+car.lm.step <- step(car.lm, direction = "backward")
+summary(car.lm.step)  # Which variables were dropped?
+car.lm.step.pred <- predict(car.lm.step, valid.df)
+accuracy(car.lm.step.pred, valid.df$Price)
+```
+
+
+# Stepwise Selection Multiple Regression
+```{r}
+car.df <- read.csv("ToyotaCorolla.csv")
+car.df = subset(car.df, select = -c(Id,Model) )
+# use first 1000 rows of data
+car.df <- car.df[1:1000, ]
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(car.df), replace = T, prob = c(0.8, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+library(dummies)
+train.df <- dummy.data.frame(train.df, sep = ".", drop = TRUE)
+valid.df <- dummy.data.frame(valid.df, sep = ".", drop = TRUE)
+
+#Run Forward Selection
+library(forecast)
+car.lm <- lm(Price ~ ., data = train.df)
+car.lm.step <- step(car.lm, direction = "both")
+summary(car.lm.step)  # Which variables were dropped/added?
+car.lm.step.pred <- predict(car.lm.step, valid.df)
+accuracy(car.lm.step.pred, valid.df$Price)
+```
+
+# Multiple Regression
+```{r}
+library(forecast)
+library(leaps)
+setwd("D:/CSU Global Data Analytics/MIS510/TextBookMaterials/DMBA-R-datasets")
+
+#####Table 6.3 Linear Regression Model of Price vs. Car Attributes
+car.df <- read.csv("ToyotaCorolla.csv")
+# use first 1000 rows of data
+car.df <- car.df[1:1000, ]
+# select variables for regression
+selected.var <- c(3, 4, 7, 8, 9, 10, 12, 13, 14, 17, 18)
+# partition data
+set.seed(1)  # set seed for reproducing the partition
+train.index <- sample(c(1:1000), 600)  
+train.df <- car.df[train.index, selected.var]
+valid.df <- car.df[-train.index, selected.var]
+
+# rUN lINEAR regression.
+car.lm <- lm(Price ~ ., data = train.df)
+
+# use options() to ensure numbers are not displayed in scientific notation.
+options(scipen = 999)
+summary(car.lm)
+
+library(forecast)
+# Compare training data predictin with test(valid) data (Residuals) 
+car.lm.pred <- predict(car.lm, valid.df)
+options(scipen=999, digits = 0)
+some.residuals <- valid.df$Price[1:20] - car.lm.pred[1:20]
+data.frame("Predicted" = car.lm.pred[1:20], "Actual" = valid.df$Price[1:20],
+           "Residual" = some.residuals)
+
+options(scipen=999, digits = 3)
+
+# use accuracy() to compute common accuracy measures.
+accuracy(car.lm.pred, valid.df$Price)
+# hisogram of validation errors
+car.lm.pred <- predict(car.lm, valid.df)
+all.residuals <- valid.df$Price - car.lm.pred
+length(all.residuals[which(all.residuals > -1406 & all.residuals < 1406)])/400
+hist(all.residuals, breaks = 25, xlab = "Residuals", main = "")
+```
+
+
+# Logistic Regression
+```{r}
+# Re-Partition data
+set.seed(1234)
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+logit.reg <- glm(Personal.Loan ~ ., data = train.df, family = "binomial") 
+# Prevent scientific notation of results
+options(scipen=999)
+summ(logit.reg, digits = 4)
+```
+
+# SVM: Classification
+```{r}
+GBank.df <- read.csv("GermanCredit.csv")
+#Remove Index Column
+GBank.df <- GBank.df[ , -c(1)]
+#Transform Categories to text
+GBank.df$RESPONSE <- factor(GBank.df$RESPONSE, levels = c(0, 1),
+                            labels = c("No", "Yes"))
+# Convert Intergers to Factors
+GBank.df1 <- GBank.df[-c(2,10,22)]
+GBank.df1[sapply(GBank.df1, is.numeric)] <- lapply(GBank.df1[sapply(GBank.df1, is.numeric)], as.factor)
+
+# Normalize Continuous Data (z-score)
+GBank.df2 <- GBank.df[c(2,10,22)]
+GBank.df2 = scale(GBank.df2, center = TRUE, scale = TRUE)
+GBank.df2 <- as.data.frame(GBank.df2)
+
+GBank.df <- cbind2(GBank.df2, GBank.df1)
+
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(GBank.df), replace = T, prob = c(0.8, 0.2))
+train.df <- GBank.df[ind==1,]
+valid.df <- GBank.df[ind==2,]
+
+
+#Run SVM Classification
+library(caret)
+library(e1071) 
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+svm_Linear <- train(RESPONSE ~., data = train.df, method = "svmLinear",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10)
+svm_Linear
+
+test_pred <- predict(svm_Linear, newdata = valid.df)
+confusionMatrix(table(test_pred, valid.df$RESPONSE))
+```
+
+
+# SVM: Regression
+```{r}
+setwd("D:/CSU Global Data Analytics/MIS510/TextBookMaterials/DMBA-R-datasets")
+
+car.df <- read.csv("ToyotaCorolla.csv")
+car.df = subset(car.df, select = -c(Id,Model) )
+# use first 1000 rows of data
+car.df <- car.df[1:1000, ]
+t(t(names(car.df)))
+
+# Convert Intergers to Factors
+car.df1 <- car.df[-c(1,2,3,5,11,15,16)]
+car.df1[sapply(car.df1, is.numeric)] <- lapply(car.df1[sapply(car.df1, is.numeric)], as.factor)
+
+# Normalize Continuous Data (z-score)
+car.df2 <- car.df[c(1,2,3,5,11,15,16)]
+car.df2 = scale(car.df2, center = TRUE, scale = TRUE)
+car.df2 <- as.data.frame(car.df2)
+
+car.df <- cbind2(GBank.df2, GBank.df1)
+# Partition data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(car.df), replace = T, prob = c(0.8, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+#Run SVM Classification
+library(caret)
+library(e1071) 
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+svm_Linear <- train(Price ~., data = train.df, method = "svmLinear",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10)
+svm_Linear
+```
+
+
+
+# Association Rules
+```{r}
+#### Table 14.4
+library(arules)
+fp.df <- read.csv("Faceplate.csv")
+
+# remove first column and convert to matrix
+fp.mat <- as.matrix(fp.df[, -1])
+
+# convert the binary incidence matrix into a transactions database
+fp.trans <- as(fp.mat, "transactions")
+inspect(fp.trans)
+
+## get rules
+# when running apriori(), include the minimum support, minimum confidence, and target
+# as arguments. 
+rules <- apriori(fp.trans, parameter = list(supp = 0.2, conf = 0.5, target = "rules"))
+
+# inspect the first six rules, sorted by their lift
+inspect(head(sort(rules, by = "lift"), n = 6))
+
+
+
+#### Table 14.6
+
+rules.tbl <- inspect(rules)
+rules.tbl[rules.tbl$support >= 0.04 & rules.tbl$confidence >= 0.7,]
+
+
+
+#### Table 14.8
+
+all.books.df <- read.csv("CharlesBookClub.csv")
+
+# create a binary incidence matrix
+count.books.df <- all.books.df[, 8:18]
+incid.books.df <- ifelse(count.books.df > 0, 1, 0)
+incid.books.mat <- as.matrix(incid.books.df[, -1])
+
+#  convert the binary incidence matrix into a transactions database
+books.trans <- as(incid.books.mat, "transactions")
+inspect(books.trans)
+
+# plot data
+itemFrequencyPlot(books.trans)
+
+# run apriori function
+rules <- apriori(books.trans, 
+                 parameter = list(supp= 200/4000, conf = 0.5, target = "rules"))
+
+# inspect rules
+inspect(sort(rules, by = "lift"))
+
+
+
+#### Table 14.11
+library(recommenderlab)
+
+# simulate matrix with 1000 users and 100 movies
+m <- matrix(nrow = 1000, ncol = 100)
+# simulated ratings (1% of the data)
+m[sample.int(100*1000, 1000)] <- ceiling(runif(1000, 0, 5))
+## convert into a realRatingMatrix
+r <- as(m, "realRatingMatrix")
+
+# user-based collaborative filtering
+UB.Rec <- Recommender(r, "UBCF")
+pred <- predict(UB.Rec, r, type="ratings")
+as(pred, "matrix")
+
+
+# item-based collaborative filtering
+IB.Rec <- Recommender(r, "IBCF")
+pred <- predict(IB.Rec, r, type="ratings")
+as(pred, "matrix")
+```
+
+
+
+# Discriminant Analysis
+```{r}
+library(DiscriMiner)
+library(caret)
+setwd("D:\CSU Global Data Analytics\MIS510\TextBookMaterials\DMBA-R-datasets")
+
+
+#####Table 12.1 Discriminant Analysis displaying estimated classification functions
+mowers.df <- read.csv("RidingMowers.csv")
+da.reg <- linDA(mowers.df[,1:2], mowers.df[,3])
+da.reg$functions
+
+
+
+#####Table 12.2 Classification Scores, Predicted Classes, and Probabilities
+da.reg <- linDA(mowers.df[,1:2], mowers.df[,3])
+#Compute probability manually (below); or, use lda() in package MASS with predict()
+propensity.owner <- exp(da.reg$scores[,2])/(exp(da.reg$scores[,1])+exp(da.reg$scores[,2]))
+data.frame(Actual=mowers.df$Ownership,
+           da.reg$classification, da.reg$scores, propensity.owner=propensity.owner)
+
+
+#####Table 12.3 Discriminant analysis for 3 class example.Classification Function and Confusion Matrix
+accidents.df <- read.csv("Accidents.csv")
+da.reg <- linDA(accidents.df[,1:10], accidents.df[,11])
+da.reg$functions
+confusionMatrix(da.reg$classification, accidents.df$MAX_SEV)
+
+
+
+#####Table 12.4 Classification Scores; Membership Probabilities, and Classifications
+#for the three-class injury training dataset
+prob <- exp(da.reg$scores[,1:3])/
+  (exp(da.reg$scores[,1]) + exp(da.reg$scores[,2]) + exp(da.reg$scores[,3]))
+
+res <- data.frame(Classification = lda.reg$classification,
+                  Actual = accidents.df$MAX_SEV,
+                  Score = round(da.reg$scores,2),
+                  Propensity = round(propensity,2))
+head(res)
+```
+
+
+
+# Naive Bayes
+```{r}
+#### Table 8.4
+
+library(e1071)
+delays.df <- read.csv("FlightDelays.csv")
+
+# change numerical variables to categorical first
+delays.df$DAY_WEEK <- factor(delays.df$DAY_WEEK)
+delays.df$DEP_TIME <- factor(delays.df$DEP_TIME)
+# create hourly bins departure time 
+delays.df$CRS_DEP_TIME <- factor(round(delays.df$CRS_DEP_TIME/100))
+
+# Create training and validation sets.
+selected.var <- c(10, 1, 8, 4, 2, 13)
+train.index <- sample(c(1:dim(delays.df)[1]), dim(delays.df)[1]*0.6)  
+train.df <- delays.df[train.index, selected.var]
+valid.df <- delays.df[-train.index, selected.var]
+
+# run naive bayes
+delays.nb <- naiveBayes(Flight.Status ~ ., data = train.df)
+delays.nb
+
+
+#### Table 8.5
+
+# use prop.table() with margin = 1 to convert a count table to a proportion table, 
+# where each row sums up to 1 (use margin = 2 for column sums).
+prop.table(table(train.df$Flight.Status, train.df$DEST), margin = 1)
+
+
+
+#### Table 8.6
+
+## predict probabilities
+pred.prob <- predict(delays.nb, newdata = valid.df, type = "raw")
+## predict class membership
+pred.class <- predict(delays.nb, newdata = valid.df)
+
+df <- data.frame(actual = valid.df$Flight.Status, predicted = pred.class, pred.prob)
+
+df[valid.df$CARRIER == "DL" & valid.df$DAY_WEEK == 7 & valid.df$CRS_DEP_TIME == 10 & 
+     valid.df$DEST == "LGA" & valid.df$ORIGIN == "DCA",]
+
+
+
+
+#### Table 8.7
+
+library(caret)
+
+# training
+pred.class <- predict(delays.nb, newdata = train.df)
+confusionMatrix(pred.class, train.df$Flight.Status)
+
+# validation
+pred.class <- predict(delays.nb, newdata = valid.df)
+confusionMatrix(pred.class, valid.df$Flight.Status)
+
+
+
+
+#### Figure 8.1
+
+library(gains)
+gain <- gains(ifelse(valid.df$Flight.Status=="delayed",1,0), pred.prob[,1], groups=100)
+
+plot(c(0,gain$cume.pct.of.total*sum(valid.df$Flight.Status=="delayed"))~c(0,gain$cume.obs), 
+     xlab="# cases", ylab="Cumulative", main="", type="l")
+lines(c(0,sum(valid.df$Flight.Status=="delayed"))~c(0, dim(valid.df)[1]), lty=2)
+```
+
+
+# Regression Tree with P-Value as criterion
+```{r}
+# Partition data
+set.seed(1234)
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+library(caret)
+model <- train(
+  AbsDiffInitWeighinkg ~., noom.t, method = "ctree",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(mincriterion = 0.95)
+)
+model
+model$results
+plot(model, type = "simple")
+plot(model$finalModel, type = "simple")
+```
+
+
+# Regression Tree with Complexity Parameter as criterion
+```{r}
+# Partition data
+set.seed(1234)
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+# Limited Classification Tree
+library(rpart)
+library(rpart.plot)
+library(rattle)
+bank.df <- read.csv("UniversalBank.csv")
+class.tree <- rpart(Personal.Loan ~ ., data = bank.df,
+                    control = rpart.control(maxdepth = 4), method = "anova", cp = 0)
+fancyRpartPlot(class.tree, under = TRUE, palettes=c("Greys", "Oranges"))
+
+
+# Deep Classification Tree with No CP limit 
+bank.df <- read.csv("UniversalBank.csv")
+# Drop ID and Zip Code Columns
+bank.df <- bank.df[ , -c(1,5)]
+deeper.ct <- rpart(Personal.Loan ~ ., data = train.df, method = "anova", cp = 0, minsplit = 1)
+# Count number of leaves
+length(deeper.ct$frame$var[deeper.ct$frame$var == "<leaf>"])
+# Plot Tree
+prp(deeper.ct, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10,
+    box.col=ifelse(deeper.ct$frame$var == "<leaf>", 'gray', 'white'))
+
+
+# Pruned Regression Tree (unpruned)
+noom.t <- rpart(Lowestweighinkg ~ ., data = noom.t, method = "anova",
+                cp = 0.001, minsplit = 5, xval = 5, maxdepth = 30)
+length(noom.t$frame$var[noom.t$frame$var == "<leaf>"])
+fancyRpartPlot(noom.t, under = TRUE, palettes=c("Greys", "Oranges"))
+# Pruning Regression Tree
+pruned.ct <- prune(noom.t,
+                   cp = noom.t$cptable[which.min(noom.t$cptable[,"xerror"]), "CP"])
+length(pruned.ct$frame$var[pruned.ct$frame$var == "<leaf>"])
+
+fancyRpartPlot(pruned.ct, under = TRUE, palettes=c("Greys", "Oranges"))
+```
+
+
+# Boosted Regression Tree
+```{r}
+library(gbm)
+library(caret)
+
+noom <- read.csv("D:/Noom Analysis/noom clean 2.csv", header = TRUE)
+
+# Parition Data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(noom.t), replace = T, prob = c(0.8, 0.2))
+train <- noom.t[ind==1,]
+valid <- noom.t[ind==2,]
+describe(train)
+
+# Boosted
+set.seed(1)
+boost <- boosting(Lowestweighinkg ~ ., data = noom.t)
+pred <- predict(gbm1, valid)
+caret::RMSE(pred, valid$Lowestweighinkg)
+gbm1 <- gbm(Lowestweighinkg ~ ., data = train,
+            distribution = "gaussian", n.trees = 100, shrinkage = 0.1,             
+            interaction.depth = 3, bag.fraction = 0.5, train.fraction = 0.5,  
+            n.minobsinnode = 10, cv.folds = 5, keep.data = TRUE, 
+            verbose = FALSE, n.cores = 1)
+# Summary
+summary(gbm1, cBars = length(gbm1$var.names),
+  n.trees = gbm1$n.trees, plotit = TRUE, order = TRUE,
+  method = relative.influence, normalize = TRUE)
+
+# Check performance using the out-of-bag (OOB) error
+best.iter <- gbm.perf(gbm1, method = "OOB")
+print(best.iter)
+
+# Check performance using the 50% heldout test set
+best.iter <- gbm.perf(gbm1, method = "test")
+print(best.iter)
+
+# Check performance using 5-fold cross-validation
+best.iter <- gbm.perf(gbm1, method = "cv")
+print(best.iter)
+
+# Plot relative influence of each variable
+par(mfrow = c(1, 2))
+summary(gbm1, n.trees = 86)          # using first tree
+summary(gbm1, n.trees = best.iter)  # using estimated best number of trees
+
+# Compactly print the first and last trees for curiosity
+print(pretty.gbm.tree(gbm1, i.tree = 1))
+print(pretty.gbm.tree(gbm1, i.tree = gbm1$n.trees))
+
+# Predict on the new data using the "best" number of trees; by default,
+# predictions will be on the link scale
+Yhat <- predict(gbm1, newdata = train, n.trees = best.iter, type = "link")
+
+# least squares error
+print(sum((train$Lowestweighinkg - Yhat)^2))
+
+# Construct univariate partial dependence plots (index or name)
+p1 <- plot(gbm1, i.var = 1, n.trees = best.iter)
+p2 <- plot(gbm1, i.var = 2, n.trees = best.iter)
+p3 <- plot(gbm1, i.var = "Lowestweighinkg", n.trees = best.iter)
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+
+# Extreme Boosted Regression Tree
+```{r}
+library(xgboost)
+library(magrittr)
+library(dplyr)
+library(Matrix)
+
+# Data
+data <- read.csv(file.choose(), header = T)
+str(data)
+data$rank <- as.factor(data$rank)
+
+# Partition data
+set.seed(1234)
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+# Create matrix - One-Hot Encoding for Factor variables
+trainm <- sparse.model.matrix(admit ~ .-1, data = train)
+head(trainm)
+train_label <- train[,"admit"]
+train_matrix <- xgb.DMatrix(data = as.matrix(trainm), label = train_label)
+
+testm <- sparse.model.matrix(admit~.-1, data = test)
+test_label <- test[,"admit"]
+test_matrix <- xgb.DMatrix(data = as.matrix(testm), label = test_label)
+
+# Parameters
+nc <- length(unique(train_label))
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc)
+watchlist <- list(train = train_matrix, test = test_matrix)
+
+# eXtreme Gradient Boosting Model
+bst_model <- xgb.train(params = xgb_params,
+                       data = train_matrix,
+                       nrounds = 1000,
+                       watchlist = watchlist,
+                       eta = 0.001,
+                       max.depth = 3,
+                       gamma = 0,
+                       subsample = 1,
+                       colsample_bytree = 1,
+                       missing = NA,
+                       seed = 333)
+
+# Training & test error plot
+e <- data.frame(bst_model$evaluation_log)
+plot(e$iter, e$train_mlogloss, col = 'blue')
+lines(e$iter, e$test_mlogloss, col = 'red')
+
+min(e$test_mlogloss)
+e[e$test_mlogloss == 0.625217,]
+
+# Feature importance
+imp <- xgb.importance(colnames(train_matrix), model = bst_model)
+print(imp)
+xgb.plot.importance(imp)
+
+# Prediction & confusion matrix - test data
+p <- predict(bst_model, newdata = test_matrix)
+pred <- matrix(p, nrow = nc, ncol = length(p)/nc) %>%
+         t() %>%
+         data.frame() %>%
+         mutate(label = test_label, max_prob = max.col(., "last")-1)
+table(Prediction = pred$max_prob, Actual = pred$label)
+```
+
+
+# Random Forest Regression
+```{r}
+# Partition data
+set.seed(1234)
+ind <- sample(2, nrow(data), replace = T, prob = c(0.8, 0.2))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+#Random Forest
+library(randomForest)
+rf <- randomForest(Lowestweighinkg ~ ., data = noom.t, ntree = 25,
+                   mtry = 4, nodesize = 5, importance = TRUE)
+# Significance Test
+rf.perm <- rf.significance(rf, noom.t, q = 0.99, p = 0.05, nperm=99, ntree=25)
+rf.perm
+
+varImpPlot(rf, type = 1, main = "Lowest Rec Weight")
+```
+
+
+# Classification Tree with P-Value as criterion
+```{r}
+library(party)
+
+# Change labels for Classification
+bank.df$Personal.Loan <- factor(bank.df$Personal.Loan, levels = c(1, 0),
+                                labels = c("Yes", "No"))
+# Classification with p-value as criterion
+tree<-ctree(Personal.Loan~., data=bank.df, 
+            control = ctree_control(mincriterion = .95, 
+                                    testtype = "Bonferroni"))
+plot(tree, type = "simple")
+```
+
+
+# Classification Tree with Complexity Parameter as criterion
+```{r}
+library(treemap)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+# Limited Classification Tree
+bank.df <- read.csv("RidingMowers.csv")
+class.tree <- rpart(Ownership ~ ., data = bank.df,
+                    control = rpart.control(maxdepth = 2), method = "class")
+
+
+#Deep Classification Tree with No Maxdepth and cp = 0
+bank.df <- read.csv("UniversalBank.csv")
+#Drop ID and Zip Code Columns
+bank.df <- bank.df[ , -c(1,5)]
+deeper.ct <- rpart(Personal.Loan ~ ., data = train.df, method = "class", cp = 0, minsplit = 1)
+# Count number of leaves
+length(deeper.ct$frame$var[deeper.ct$frame$var == "<leaf>"])
+
+# Plot Tree
+prp(deeper.ct, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10,
+    box.col=ifelse(deeper.ct$frame$var == "<leaf>", 'gray', 'white'))
+fancyRpartPlot(deeper.ct, under = TRUE, palettes=c("Greys", "Oranges"))
+
+# Pruned Regression Tree (unpruned)
+bank.df <- rpart(Personal.Loan ~ ., data = bank.df, method = "class",
+                cp = 0, minsplit = 5, xval = 5, maxdepth = 30)
+length(bank.df$frame$var[bank.df$frame$var == "<leaf>"])
+# Plot Tree
+fancyRpartPlot(bank.df, under = TRUE, palettes=c("Greys", "Oranges"))
+
+# Pruning the Regression Tree
+bank.df <- prune(bank.df,
+                   cp = bank.df$cptable[which.min(bank.df$cptable[,"xerror"]), "CP"])
+length(pruned.ct$frame$var[pruned.ct$frame$var == "<leaf>"])
+#Plot Pruned Tree
+fancyRpartPlot(pruned.ct, under = TRUE, palettes=c("Greys", "Oranges"))
+```
+
+
+# Boosted Classification Tree
+```{r}
+library(gbm)
+library(caret)
+library(psych)
+library(ROCR)
+library(ModelMetrics)
+
+setwd("D:/CSU Global Data Analytics/MIS510/TextBookMaterials/DMBA-R-datasets/")
+bank.df <- read.csv("UniversalBank.csv")
+#Drop ID and Zip Code Columns
+bank.df <- bank.df[ , -c(1,5)]
+bank.df$Personal.Loan <- as.factor(bank.df$Personal.Loan)
+
+# Parition Data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(bank.df), replace = T, prob = c(0.8, 0.2))
+train <- bank.df[ind==1,]
+valid <- bank.df[ind==2,]
+describe(train)
+
+# Boosted
+set.seed(1)
+boost <- gbm(Personal.Loan ~.,
+              data = train,
+              distribution = "multinomial",
+              cv.folds = 10,
+              shrinkage = .01,
+              n.minobsinnode = 10,
+              n.trees = 200)
+print(boost)
+
+# Confusion Matrix
+pred = predict.gbm(object = boost,
+                   newdata = valid,
+                   n.trees = 100,
+                   type = "response")
+labels = colnames(pred)[apply(pred, 1, which.max)]
+result = data.frame(valid$Personal.Loan, labels)
+cm = confusionMatrix(valid$Personal.Loan, as.factor(pred))
+print(cm)
+
+# Summary
+summary(boost, cBars = length(boost$var.names),
+  n.trees = boost$n.trees, plotit = TRUE, order = TRUE,
+  method = relative.influence, normalize = TRUE)
+
+# Check performance using the out-of-bag (OOB) error
+best.iter <- gbm.perf(boost, method = "OOB")
+print(best.iter)
+
+# Check performance using the 50% heldout test set
+best.iter <- gbm.perf(boost, method = "test")
+print(best.iter)
+
+# Check performance using 5-fold cross-validation
+best.iter <- gbm.perf(boost, method = "cv")
+print(best.iter)
+
+# Plot relative influence of each variable
+par(mfrow = c(1, 2))
+summary(boost, n.trees = 86)          # using first tree
+summary(boost, n.trees = best.iter)  # using estimated best number of trees
+
+# Compactly print the first and last trees for curiosity
+print(pretty.gbm.tree(boost, i.tree = 1))
+print(pretty.gbm.tree(boost, i.tree = boost$n.trees))
+
+# Predict on the new data using the "best" number of trees; by default,
+# predictions will be on the link scale
+Yhat <- predict(boost, newdata = train, n.trees = best.iter, type = "link")
+
+
+# Construct univariate partial dependence plots (index or name)
+p1 <- plot(boost, i.var = 1, n.trees = best.iter)
+p2 <- plot(boost, i.var = 2, n.trees = best.iter)
+#p3 <- plot(boost, i.var = "Personal.Loan", n.trees = best.iter)
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+# Random Forest Classification
+```{r}
+library(caret)
+library(randomForest)
+library(rfUtilities)
+library(e1071)
+library(rattle)
+
+setwd("D:/CSU Global Data Analytics/MIS510/TextBookMaterials/DMBA-R-datasets/")
+bank.df <- read.csv("UniversalBank.csv")
+
+#Drop ID and Zip Code Columns
+bank.df <- bank.df[ , -c(1,5)]
+bank.df$Personal.Loan <- as.factor(bank.df$Personal.Loan)
+
+# Parition Data
+set.seed(1234)  # set seed for reproducing the partition
+ind <- sample(2, nrow(bank.df), replace = T, prob = c(0.8, 0.2))
+train <- bank.df[ind==1,]
+valid <- bank.df[ind==2,]
+describe(train)
+
+x <- train[,1:12]
+y <- train[,8]
+#Parameter Grid for Tuning mtry
+control <- trainControl(method="repeatedcv", number=5, repeats=3, search="random")
+set.seed(1234)
+mtry <- sqrt(ncol(x))
+#Test Grid for Tuning
+rf_random <- train(Personal.Loan~., data=train, method="rf", metric="Accuracy", tuneLength=15, trControl=control)
+print(rf_random)
+print(rf_random$bestTune)
+plot(rf_random)
+
+
+# Random Forest
+set.seed(2)
+rf <- randomForest(as.factor(Personal.Loan) ~ ., data = train, type = "classification",
+                   ntree = 500, mtry = 4, nodesize = 5,
+                   importance = TRUE,  proximity = TRUE)
+
+# Confusion Matrix for randomForest
+print(rf)
+plot(rf, ylim=c(0, .2))
+legend("right", colnames(rf$err.rate),col=1:3,cex=0.8,fill=1:3)
+# Variable Importance Plot
+varImpPlot(rf)
+
+# Confusion Matrix for Valid/Test
+rf.pred = predict(object = rf,
+                   newdata = valid,
+                   type = "vote")
+labels = colnames(rf.pred)[apply(rf.pred, 1,which.max)]
+result = data.frame(valid$Personal.Loan, labels)
+cm = confusionMatrix(valid$Personal.Loan, rf.pred)
+print(cm)
+```
+
+
+# Neural Network Classification
+```{r}
+library(neuralnet)
+library(nnet)
+library(caret)
+library(e1071)
+
+GBank.df <- read.csv("GermanCredit.csv")
+#Remove Index Column
+GBank.df <- GBank.df[ , -c(1)]
+#Transform Categories to text
+GBank.df$RESPONSE <- factor(GBank.df$RESPONSE, levels = c(0, 1),
+                            labels = c("No", "Yes"))
+t(t(names(GBank.df)))
+# Selected Non-Categoroical Variables
+library(dummies)
+train.df <- dummy.data.frame(train.df, sep = ".", drop = TRUE)
+valid.df <- dummy.data.frame(valid.df, sep = ".", drop = TRUE)
+t(t(names(GBank.Dum)))
+
+View(GBank.Dum)
+# Neural Network with 1 hidden nodes 
+nn1 <- neuralnet(RESPONSE ~ CHK_ACCT_0 + CHK_ACCT_1 + CHK_ACCT_2 + CHK_ACCT_3 +
+                   HISTORY_0 + HISTORY_1 + HISTORY_2 + HISTORY_3 + HISTORY_4 +
+                   EMPLOYMENT_0 + EMPLOYMENT_1 + EMPLOYMENT_2 + EMPLOYMENT_3 + EMPLOYMENT_4 +
+                   JOB_0 + JOB_1 + JOB_2 + JOB_3 + CO.APPLICANT + REAL_ESTATE + AGE,
+                 data = GBank.Dum, hidden = c(1), rep = 10)
+# Display Weights
+nn1$weights
+# Plot NN
+plot(nn1, rep="best")
+#Confusion Matrix
+predict <- compute(nn1, GBank.Dum[,-c(4)])
+predicted.class <- apply(predict$net.result,1,which.max)-1
+confusionMatrix(as.factor(predicted.class), as.factor(GBank.Dum[Work ,]$RESPONSE_1))
+```
+
+
+# Neural Network Classification in Caret
+```{r}
+library(neuralnet)
+library(nnet)
+library(caret)
+library(e1071)
+
+GBank.df <- read.csv("GermanCredit.csv")
+#Remove Index Column
+GBank.df <- GBank.df[ , -c(1)]
+#Transform Categories to text
+GBank.df$RESPONSE <- factor(GBank.df$RESPONSE, levels = c(0, 1),
+                            labels = c("No", "Yes"))
+t(t(names(GBank.df)))
+# Selected Non-Categoroical Variables
+vars <- c("CO.APPLICANT", "REAL_ESTATE", "AGE", "RESPONSE")
+set.seed(1)
+Work=sample(row.names(GBank.df), dim(GBank.df)[1])
+# Multiple classes - One Hot Encoding
+GBank.Dum <- cbind(GBank.df[Work,c(vars)],
+                   class.ind(GBank.df[Work ,]$RESPONSE),
+                   class.ind(GBank.df[Work ,]$CHK_ACCT),
+                   class.ind(GBank.df[Work ,]$HISTORY),
+                   class.ind(GBank.df[Work ,]$EMPLOYMENT),
+                   class.ind(GBank.df[Work ,]$JOB))
+names(GBank.Dum) <- c(vars, 
+                      paste("RESPONSE_", c(0, 1), sep = ""),
+                      paste("CHK_ACCT_", c(0, 1, 2, 3), sep=""), 
+                      paste("HISTORY_", c(0, 1, 2, 3, 4), sep=""),
+                      paste("EMPLOYMENT_", c(0, 1, 2, 3, 4), sep=""), 
+                      paste("JOB_", c(0, 1, 2, 3), sep=""))
+t(t(names(GBank.Dum)))
+View(GBank.Dum)
+# Neural Network with 1 hidden nodes 
+nn1 <- train(RESPONSE ~ CHK_ACCT_0 + CHK_ACCT_1 + CHK_ACCT_2 + CHK_ACCT_3 +
+                   HISTORY_0 + HISTORY_1 + HISTORY_2 + HISTORY_3 + HISTORY_4 +
+                   EMPLOYMENT_0 + EMPLOYMENT_1 + EMPLOYMENT_2 + EMPLOYMENT_3 + EMPLOYMENT_4 +
+                   JOB_0 + JOB_1 + JOB_2 + JOB_3 + CO.APPLICANT + REAL_ESTATE + AGE,
+                 data = GBank.Dum, hidden = 1, method = "nnet", lineout = TRUE)
+
+varImp(object = nn1)
+plot(varImp(object = nn1))
+plot(nn1)
+print(nn1)
+print(nn1$modelInfo)
+confusionMatrix(nn1)
+```
+
+
+# Neural Netwrok Regression in Caret (Not Possible in NeuralNet Package)
+```{r}
+library(sampling)
+library(neuralnet)
+library(nnet)
+library(caret)
+library(e1071)
+library(forecast)
+library(leaps)
+setwd("D:/CSU Global Data Analytics/MIS510/TextBookMaterials/DMBA-R-datasets")
+
+car.df <- read.csv("ToyotaCorolla.csv")
+# select variables for regression
+car.df <-  car.df[ ,c(3, 4, 7, 8, 9, 10, 12, 13, 14, 17, 18)]
+car.df$Doors <- as.factor(car.df$Doors)
+library(dummies)
+car.df <- dummy.data.frame(car.df, sep = ".", drop = TRUE)
+t(t(names(car.df)))
+
+# Normalize Continuous Data (z-score)
+car.df1 <- car.df[-c(1,2,3,7,10,15,16)]
+# Continous Variables
+car.df2 <- car.df[c(1,2,3,7,10,15,16)]
+car.df2 = scale(car.df[c(1,2,3,7,10,15,16)], center = TRUE, scale = TRUE)
+car.df2 = scale
+car.df2 <- as.data.frame(car.df2)
+# Bind Categorical and Continuous Data Frames
+car.df <- cbind2(car.df1, car.df2)
+t(t(names(car.df)))
+
+# partition data
+set.seed(1)  # set seed for reproducing the partition
+ind <- sample(3, nrow(car.df), replace = T, prob = c(0.5, 0.3, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+# Neural Network with 1 hidden nodes 
+set.seed(12321)
+trctrl <- trainControl(method = "repeatedcv", search = "random", selectionFunction = "best", 
+                       allowParallel = TRUE, number = 10, repeats = 3)
+nn1 <- train(Price ~ .,
+             data = train.df,
+             method = "nnet", 
+             linout = 1,
+             trControl = trctrl,
+             preProcess = c("center", "scale"),
+             tuneLength = 15)
+
+print(nn1)
+nn1.pred <- predict(nn1, valid.df)
+nn1.pred2 <- predict(nn1, train.df)
+# use accuracy() to compute common accuracy measures.
+options(scipen=999, digits = 3)
+accuracy(nn1.pred, valid.df$Price)
+accuracy(nn1.pred2, train.df$Price)
+varImp(object = nn1)
+plot(varImp(object = nn1))
+# Plot NN
+plot(nn1, rep="best")
+
+
+
+# Un-Standardize the DV for Histogram
+car.df <- read.csv("ToyotaCorolla.csv")
+# select variables for regression
+car.df <-  car.df[ ,c(3, 4, 7, 8, 9, 10, 12, 13, 14, 17, 18)]
+car.df$Doors <- as.factor(car.df$Doors)
+library(dummies)
+car.df <- dummy.data.frame(car.df, sep = ".", drop = TRUE)
+t(t(names(car.df)))
+
+# Normalize Continuous Data (z-score)
+car.df1 <- car.df[-c(2,3,7,10,15,16)]
+# Continous Variables
+car.df2 <- car.df[c(2,3,7,10,15,16)]
+car.df2 = scale(car.df[c(2,3,7,10,15,16)], center = TRUE, scale = TRUE)
+car.df2 <- as.data.frame(car.df2)
+# Bind Categorical and Continuous Data Frames
+car.df <- cbind2(car.df1, car.df2)
+t(t(names(car.df)))
+
+# partition data
+set.seed(1)  # set seed for reproducing the partition
+ind <- sample(3, nrow(car.df), replace = T, prob = c(0.5, 0.3, 0.2))
+train.df <- car.df[ind==1,]
+valid.df <- car.df[ind==2,]
+
+print(nn1)
+#Confusion Matrix
+library(forecast)
+
+# Compare training data predictin with test(valid) data (Residuals) 
+nn1.pred <- predict(nn1, valid.df)
+nn1.pred2 <- predict(nn1, train.df)
+options(scipen=999, digits = 0)
+some.residuals <- valid.df$Price[1:20] - nn1.pred[1:20]
+data.frame("Predicted" = nn1.pred[1:20], "Actual" = valid.df$Price[1:20],
+           "Residual" = some.residuals)
+
+options(scipen=999, digits = 3)
+
+# use accuracy() to compute common accuracy measures.
+accuracy(nn1.pred, valid.df$Price)
+accuracy(nn1.pred2, train.df$Price)
+# hisogram of validation errors
+nn1.pred <- predict(nn1, valid.df)
+all.residuals <- valid.df$Price - nn1.pred
+length(all.residuals[which(all.residuals > -1406 & all.residuals < 1406)])/400
+hist(all.residuals, breaks = 25, xlab = "Residuals", main = "")
+```
